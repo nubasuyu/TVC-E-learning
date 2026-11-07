@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" 
+  url      = env("DATABASE_URL")
+}
+
+model ExamBody {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  questions Question[]
+}
+
+model Subject {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  topics    Topic[]
+  questions Question[]
+}
+
+model Topic {
+  id        Int        @id @default(autoincrement())
+  name      String
+  subjectId Int
+  subject   Subject    @relation(fields: [subjectId], references: [id])
+  questions Question[]
+}
+
+model Passage {
+  id        Int        @id @default(autoincrement())
+  title     String
+  content   String
+  questions Question[]
+}
+
+model Question {
+  id          Int      @id @default(autoincrement())
+  examBodyId  Int
+  subjectId   Int
+  topicId     Int?
+  passageId   Int?
+  
+  questionType String  @default("MCQ_SINGLE")
+  content     String   
+  explanation String?  
+  year        Int?
+  
+  examBody    ExamBody @relation(fields: [examBodyId], references: [id])
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  topic       Topic?   @relation(fields: [topicId], references: [id])
+  passage     Passage? @relation(fields: [passageId], references: [id])
+  options     Option[]
+}
+
+model Option {
+  id           Int      @id @default(autoincrement())
+  questionId   Int
+  label        String
+  optionType   String
+  textContent  String?
+  imageUrl     String?
+  isCorrect    Boolean  @default(false)
+  
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  name       String
+  email      String   @unique
+  password   String
+  role       String   @default("STUDENT")
+  isApproved Boolean  @default(false) // <-- NEW: Tracks if Admin has approved them
+  results    Result[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Result {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  examBody       String
+  subject        String
+  topic          String?
+  score          Int
+  totalQuestions Int
+  createdAt      DateTime @default(now())
+  
+  user           User     @relation(fields: [userId], references: [id])
+}

@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* NEW: Virtue College Brand Colors for Tailwind v4 */
+@theme {
+  --color-virtue-brown: #3E2723;
+  --color-virtue-brown-light: #5D4037;
+  --color-virtue-cream: #FDFBF7;
+  --color-virtue-cream-dark: #F5E6D3;
+  --color-virtue-orange: #E67E22; /* Matches the ribbon */
+  --color-virtue-orange-light: #F39C12;
+}
+
+/* Global Background */
+body {
+  background-color: var(--color-virtue-cream);
+  font-family: 'Inter', sans-serif;
+}
