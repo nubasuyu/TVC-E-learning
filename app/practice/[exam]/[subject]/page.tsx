@@ -12,7 +12,7 @@ export default function PracticePage() {
 
   // Get the exam and subject names from the URL
   const examName = params.exam as string;
-  const subjectName = params.subject as string;
+  const subjectName = decodeURIComponent(params.subject as string); // <-- DECODE IT!
 
   const [topics, setTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,7 +108,7 @@ export default function PracticePage() {
                   className="bg-white p-6 rounded-xl border-2 border-transparent hover:border-virtue-orange hover:shadow-lg transition-all text-left group"
                 >
                   <div className="w-10 h-10 rounded-full bg-virtue-cream flex items-center justify-center text-virtue-orange mb-3 group-hover:bg-virtue-orange group-hover:text-white transition-colors">
-                    📌
+                    
                   </div>
                   <h3 className="font-bold text-virtue-brown group-hover:text-virtue-orange transition-colors">
                     {topic.name}
