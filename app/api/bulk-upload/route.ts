@@ -30,21 +30,27 @@ export async function POST(request: Request) {
           create: { name: q.subject },
         });
 
-        // 3. Find or Create Topic
+        // 3. Find or Create Topic (FIXED: Using findFirst instead of unique constraint)
         let topicId = null;
         if (q.topic && q.topic.trim() !== '') {
-          const topic = await prisma.topic.upsert({
-            where: { name_subjectId: { name: q.topic, subjectId: subject.id } }, // Note: requires unique constraint in schema, fallback to findFirst
-            update: {},
-            create: { name: q.topic, subjectId: subject.id },
-          }).catch(async () => {
-             // Fallback if unique constraint isn't set
-             let existing = await prisma.topic.findFirst({ where: { name: q.topic, subjectId: subject.id } });
-             if (!existing) {
-               existing = await prisma.topic.create({ data: { name: q.topic, subjectId: subject.id } });
-             }
-             return existing;
+          // First, try to find if topic already exists
+          let topic = await prisma.topic.findFirst({
+            where: { 
+              name: q.topic, 
+              subjectId: subject.id 
+            }
           });
+
+          // If it doesn't exist, create it
+          if (!topic) {
+            topic = await prisma.topic.create({
+              data: { 
+                name: q.topic, 
+                subjectId: subject.id 
+              }
+            });
+          }
+          
           topicId = topic.id;
         }
 
