@@ -11,13 +11,12 @@ export const authOptions = {
         email: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials: any) {
         if (!credentials?.email || !credentials?.password) return null;
 
         const user = await prisma.user.findUnique({ where: { email: credentials.email } });
         if (!user) return null;
         
-        // NEW: Block login if Admin hasn't approved them yet
         if (!user.isApproved) return null; 
 
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
@@ -33,16 +32,14 @@ export const authOptions = {
     })
   ],
   callbacks: {
-    // 1. Add ID and role to the JWT token
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: any; user: any }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
       }
       return token;
     },
-    // 2. Add ID and role to the session object
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (session?.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
@@ -51,7 +48,7 @@ export const authOptions = {
     }
   },
   pages: { signIn: '/login' },
-  session: { strategy:  "jwt" as const },
+  session: { strategy: "jwt" as const },
   secret: process.env.NEXTAUTH_SECRET,
 };
 
