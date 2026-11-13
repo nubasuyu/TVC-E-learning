@@ -18,16 +18,31 @@ export async function GET(request: Request) {
       whereClause.topic = { name: topicName };
     }
 
-    const questions = await prisma.question.findMany({
+    // Step 1: Fetch ONLY the IDs of all matching questions (Very fast & lightweight)
+    const allQuestionIds = await prisma.question.findMany({
       where: whereClause,
-      include: { options: true, topic: true },
-      take: 50, 
-      orderBy: { id: 'desc' }
+      select: { id: true }
     });
 
-    if (!questions || questions.length === 0) {
+    if (!allQuestionIds || allQuestionIds.length === 0) {
       return NextResponse.json({ error: 'No questions found' }, { status: 404 });
     }
+
+    // Step 2: Shuffle the IDs randomly
+    const shuffledIds = allQuestionIds
+      .map(q => q.id)
+      .sort(() => 0.5 - Math.random());
+
+    // Step 3: Pick up to 50 random IDs (or all of them if there are fewer than 50)
+    const selectedIds = shuffledIds.slice(0, 50);
+
+    // Step 4: Fetch the full details (with options and topic) for only those 50 random questions
+    const questions = await prisma.question.findMany({
+      where: {
+        id: { in: selectedIds }
+      },
+      include: { options: true, topic: true }
+    });
 
     return NextResponse.json({ examName, subjectName, topicName, questions });
   } catch (error) {
