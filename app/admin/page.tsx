@@ -134,12 +134,17 @@ export default function AdminPage() {
               <a href="/admin/catalog" className="inline-block bg-virtue-orange text-white px-4 py-2 rounded-lg font-semibold hover:bg-virtue-orange-light transition-colors shadow-sm">
                 📚 Manage Catalog (Exams/Subjects/Topics)
               </a>
-              {/* NEW: Student Performance Button */}
               <a href="/admin/results" className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-sm">
                 📊 Student Performance
               </a>
             </>
           )}
+          
+          {/* NEW: Manage Questions Button (Visible to both Admin and Teacher) */}
+          <a href="/admin/questions" className="inline-block bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-700 transition-colors shadow-sm">
+            📝 Manage & Edit Questions
+          </a>
+          
           <a href="/admin/bulk" className="inline-block bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-sm">
             📤 Bulk Upload Questions (CSV)
           </a>
