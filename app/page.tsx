@@ -9,13 +9,13 @@ export default function Dashboard() {
   const router = useRouter();
   const { data: session } = useSession();
   
-  // NEW: Dynamic state for catalog
+  // Dynamic state for catalog
   const [examBodies, setExamBodies] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedExam, setSelectedExam] = useState('');
 
   useEffect(() => {
-    if (session && (session.user?.role === 'TEACHER' || session.user?.role === 'ADMIN')) {
+    if (session && ((session.user as any)?.role === 'TEACHER' || (session.user as any)?.role === 'ADMIN')) {
       router.replace('/admin');
     }
     
@@ -36,7 +36,7 @@ export default function Dashboard() {
     router.push(`/practice/${examName}/${subjectName}`);
   };
 
-  // Filter subjects for the selected exam (For now, we show all subjects for all exams, or you can filter later)
+  // Filter subjects for the selected exam (For now, we show all subjects for all exams)
   const currentSubjects = subjects; 
 
   return (
@@ -44,13 +44,26 @@ export default function Dashboard() {
       <Header />
       
       <div className="max-w-5xl mx-auto py-10 px-4">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-virtue-brown mb-2">The Virtue College E-Learning</h1>
           <p className="text-virtue-brown/70 text-lg">Select your exam board and subject to begin practicing.</p>
         </div>
 
+        {/* NEW: Custom Exam Builder Button */}
+        <div className="mb-12 text-center">
+          <button 
+            onClick={() => router.push('/custom-exam')}
+            className="bg-virtue-brown text-virtue-cream px-8 py-4 rounded-xl font-bold text-lg hover:bg-virtue-brown-light transition-all shadow-lg flex items-center gap-3 mx-auto group"
+          >
+            <span className="text-2xl">📝</span> 
+            <span>Build Custom Mock Exam (Up to 4 Subjects)</span>
+            <span className="bg-virtue-orange text-white text-xs px-3 py-1 rounded-full group-hover:scale-105 transition-transform">New</span>
+          </button>
+          <p className="text-sm text-virtue-brown/60 mt-3">Simulate a real JAMB exam with English + 3 subjects, custom time, and topic selection.</p>
+        </div>
+
         {examBodies.length === 0 ? (
-          <div className="text-center text-virtue-brown">Loading subjects...</div>
+          <div className="text-center text-virtue-brown py-10">Loading subjects...</div>
         ) : (
           <div className="space-y-10">
             {examBodies.map((exam) => (
