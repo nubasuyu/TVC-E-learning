@@ -13,12 +13,11 @@ export async function GET(request: Request) {
       subject: { name: subjectName }
     };
 
-    // STRICT FILTER: If a topic is in the URL, ONLY get questions for that topic
     if (topicName && topicName.trim() !== '') {
       whereClause.topic = { name: topicName };
     }
 
-    // Step 1: Fetch ONLY the IDs of all matching questions (Very fast & lightweight)
+    // Step 1: Fetch ONLY the IDs of all matching questions
     const allQuestionIds = await prisma.question.findMany({
       where: whereClause,
       select: { id: true }
@@ -33,10 +32,10 @@ export async function GET(request: Request) {
       .map(q => q.id)
       .sort(() => 0.5 - Math.random());
 
-    // Step 3: Pick up to 50 random IDs (or all of them if there are fewer than 50)
+    // Step 3: Pick up to 50 random IDs
     const selectedIds = shuffledIds.slice(0, 50);
 
-    // Step 4: Fetch the full details (with options and topic) for only those 50 random questions
+    // Step 4: Fetch the full details for those random IDs
     const questions = await prisma.question.findMany({
       where: {
         id: { in: selectedIds }
@@ -44,7 +43,17 @@ export async function GET(request: Request) {
       include: { options: true, topic: true }
     });
 
-    return NextResponse.json({ examName, subjectName, topicName, questions });
+    // Step 5: CRITICAL FIX - Sort the fetched questions to match our shuffled ID order
+    const randomizedQuestions = questions.sort((a, b) => {
+      return selectedIds.indexOf(a.id) - selectedIds.indexOf(b.id);
+    });
+
+    return NextResponse.json({ 
+      examName, 
+      subjectName, 
+      topicName, 
+      questions: randomizedQuestions 
+    });
   } catch (error) {
     console.error('Exam fetch error:', error);
     return NextResponse.json({ error: 'Failed to fetch exam' }, { status: 500 });
