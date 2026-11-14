@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
 import Header from '../components/Header';
 
-// Helper to render math and text
+// Helper to render math and text safely
 const RenderTextWithMath = ({ text }: { text: string }) => {
   if (!text) return null;
   const parts = text.split(/(\$[^$]+\$)/g);
@@ -65,13 +65,24 @@ function ExamContent() {
 
   // 2. Timer logic
   useEffect(() => {
-    if (timeLeft <= 0) {
+    if (timeLeft <= 0 && !isSubmitted) {
       handleSubmitExam(true);
       return;
     }
-    const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    const timer = setInterval(() => {
+      if (!isSubmitted) {
+        setTimeLeft((prev) => prev - 1);
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, isSubmitted]);
+
+  // Scroll to top when submitted
+  useEffect(() => {
+    if (isSubmitted) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [isSubmitted]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -96,11 +107,15 @@ function ExamContent() {
     });
   };
 
-  const handleSubmitExam = (auto = false) => {
-    if (!auto && !window.confirm("Are you sure you want to submit your exam? You cannot change your answers after this.")) {
-      return;
+  const handleSubmitExam = async (auto = false) => {
+    if (!auto) {
+      const confirmed = window.confirm("⚠️ Are you sure you want to submit your exam? You cannot change your answers after this.");
+      if (!confirmed) return;
+    } else {
+      alert("⏰ Time is up! Your exam is being submitted automatically.");
     }
 
+    // 1. Calculate Score Locally First
     let correctCount = 0;
     questions.forEach(q => {
       const selectedOptionId = answers[q.id];
@@ -111,21 +126,29 @@ function ExamContent() {
     });
 
     setScore(correctCount);
-    setIsSubmitted(true);
+    setIsSubmitted(true); // This triggers the Scorecard View immediately
 
-    // Save result to database in the background
+    // 2. Save to Database in Background
     if (session?.user) {
-      fetch('/api/results', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          examBody: examName,
-          subject: subjectName,
-          topic: topicName,
-          score: correctCount,
-          totalQuestions: questions.length,
-        }),
-      }).catch(err => console.error('Failed to save result', err));
+      try {
+        const res = await fetch('/api/results', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            examBody: examName,
+            subject: subjectName,
+            topic: topicName || null,
+            score: correctCount,
+            totalQuestions: questions.length,
+          }),
+        });
+        
+        if (!res.ok) {
+          console.error("Failed to save result to database");
+        }
+      } catch (error) {
+        console.error("Network error saving result:", error);
+      }
     }
   };
 
@@ -151,7 +174,7 @@ function ExamContent() {
 
   // --- SCORECARD VIEW ---
   if (isSubmitted) {
-    const percentage = Math.round((score / questions.length) * 100);
+    const percentage = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
     return (
       <div className="min-h-screen bg-virtue-cream flex flex-col">
         <Header />
@@ -190,13 +213,21 @@ function ExamContent() {
               </div>
             </div>
 
-            <h2 className="text-xl font-bold text-virtue-brown mb-4">Question Breakdown</h2>
+            <h2 className="text-xl font-bold text-virtue-brown mb-4">Question Breakdown & Corrections</h2>
             <div className="space-y-6">
               {questions.map((q, index) => {
                 const selectedOptionId = answers[q.id];
                 const correctOption = q.options.find((opt: any) => opt.isCorrect);
                 const isCorrect = selectedOptionId === correctOption?.id.toString();
-                const qContent = JSON.parse(q.content);
+                
+                // Safely parse content
+                let qText = '';
+                try {
+                  const parsed = JSON.parse(q.content);
+                  qText = parsed.text || q.content;
+                } catch (e) {
+                  qText = q.content;
+                }
 
                 return (
                   <div key={q.id} className={`bg-white rounded-xl shadow-sm p-6 border-l-4 ${isCorrect ? 'border-green-500' : 'border-red-500'}`}>
@@ -208,7 +239,7 @@ function ExamContent() {
                     </div>
                     
                     <div className="text-virtue-brown mb-4 text-lg">
-                      <RenderTextWithMath text={qContent.text} />
+                      <RenderTextWithMath text={qText} />
                     </div>
 
                     <div className="space-y-2 mb-4">
@@ -217,12 +248,13 @@ function ExamContent() {
                         const isTheCorrectOne = opt.isCorrect;
                         
                         let bgClass = "bg-virtue-cream border-virtue-orange/20";
-                        if (isSelected && !isTheCorrectOne) bgClass = "bg-red-50 border-red-300";
-                        if (isTheCorrectOne) bgClass = "bg-green-50 border-green-300";
+                        if (isSelected && !isTheCorrectOne) bgClass = "bg-red-50 border-red-300"; // Wrong answer selected
+                        if (isTheCorrectOne) bgClass = "bg-green-50 border-green-300"; // Correct answer
 
                         return (
                           <div key={opt.id} className={`p-3 rounded-lg border flex items-center gap-3 ${bgClass}`}>
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isTheCorrectOne ? 'bg-green-500 text-white' : isSelected ? 'bg-red-500 text-white' : 'bg-virtue-cream-dark text-virtue-brown'}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 
+                              ${isTheCorrectOne ? 'bg-green-500 text-white' : isSelected ? 'bg-red-500 text-white' : 'bg-virtue-cream-dark text-virtue-brown'}`}>
                               {opt.label}
                             </div>
                             <div className="text-virtue-brown">
@@ -234,10 +266,17 @@ function ExamContent() {
                     </div>
 
                     {q.explanation && (
-                      <div className="bg-virtue-cream-dark p-4 rounded-lg border border-virtue-orange/20">
-                        <p className="text-sm font-bold text-virtue-brown mb-1">Explanation:</p>
+                      <div className="bg-virtue-cream-dark p-4 rounded-lg border border-virtue-orange/20 mt-4">
+                        <p className="text-sm font-bold text-virtue-brown mb-1">💡 Explanation:</p>
                         <p className="text-virtue-brown/80 text-sm">
-                          <RenderTextWithMath text={JSON.parse(q.explanation).text || q.explanation} />
+                          {(() => {
+                            try {
+                              const parsed = JSON.parse(q.explanation);
+                              return <RenderTextWithMath text={parsed.text || q.explanation} />;
+                            } catch (e) {
+                              return <RenderTextWithMath text={q.explanation} />;
+                            }
+                          })()}
                         </p>
                       </div>
                     )}
@@ -253,7 +292,14 @@ function ExamContent() {
 
   // --- EXAM VIEW ---
   const currentQuestion = questions[currentIndex];
-  const questionContent = JSON.parse(currentQuestion.content);
+  let questionText = '';
+  try {
+    const parsed = JSON.parse(currentQuestion.content);
+    questionText = parsed.text || currentQuestion.content;
+  } catch (e) {
+    questionText = currentQuestion.content;
+  }
+  
   const isFlagged = flagged.has(currentQuestion.id);
 
   return (
@@ -288,7 +334,7 @@ function ExamContent() {
             </div>
 
             <div className="text-lg text-virtue-brown leading-relaxed mb-8">
-              <RenderTextWithMath text={questionContent.text} />
+              <RenderTextWithMath text={questionText} />
             </div>
 
             <div className="space-y-3">

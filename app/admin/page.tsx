@@ -10,8 +10,14 @@ export default function AdminPage() {
   const { data: session } = useSession();
   const userRole = (session?.user as any)?.role || 'TEACHER';
 
-  // State for Analytics
-  const [stats, setStats] = useState({ students: 0, teachers: 0, questions: 0, examsTaken: 0 });
+  // State for Analytics (Added subjectBreakdown)
+  const [stats, setStats] = useState<any>({ 
+    students: 0, 
+    teachers: 0, 
+    questions: 0, 
+    examsTaken: 0, 
+    subjectBreakdown: [] 
+  });
 
   const [examBodies, setExamBodies] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -124,6 +130,37 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* NEW: Subject Performance Breakdown */}
+        {userRole === 'ADMIN' && stats.subjectBreakdown && stats.subjectBreakdown.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-virtue-orange/10 p-6 mb-10">
+            <h3 className="text-lg font-bold text-virtue-brown mb-4">📊 Subject Performance Breakdown</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-virtue-cream text-virtue-brown">
+                  <tr>
+                    <th className="p-3 rounded-tl-lg">Subject</th>
+                    <th className="p-3">Exams Taken</th>
+                    <th className="p-3 rounded-tr-lg">Average Score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-virtue-cream-dark">
+                  {stats.subjectBreakdown.map((stat: any, index: number) => (
+                    <tr key={stat.subject} className="hover:bg-virtue-cream/50">
+                      <td className="p-3 font-semibold text-virtue-brown">{stat.subject}</td>
+                      <td className="p-3 text-virtue-brown">{stat.examsTaken}</td>
+                      <td className="p-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${stat.averageScore >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {stat.averageScore}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="mb-6 flex flex-wrap gap-4">
           {userRole === 'ADMIN' && (
@@ -140,7 +177,7 @@ export default function AdminPage() {
             </>
           )}
           
-          {/* NEW: Manage Questions Button (Visible to both Admin and Teacher) */}
+          {/* Manage Questions Button (Visible to both Admin and Teacher) */}
           <a href="/admin/questions" className="inline-block bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-700 transition-colors shadow-sm">
             📝 Manage & Edit Questions
           </a>

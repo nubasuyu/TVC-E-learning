@@ -1,13 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
+
+// Helper: safely extract displayable HTML/text from the stored content field
+const parseContent = (raw: any): string => {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.text || raw;
+  } catch (e) {
+    return raw;
+  }
+};
 
 export default function CustomExamPage() {
   const router = useRouter();
   const [step, setStep] = useState<'setup' | 'exam' | 'results'>('setup');
-  
+
   // Setup State
   const [allSubjects, setAllSubjects] = useState<any[]>([]);
   const [allTopics, setAllTopics] = useState<any[]>([]);
@@ -15,7 +26,7 @@ export default function CustomExamPage() {
   const [totalTime, setTotalTime] = useState(120);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [subjectConfigs, setSubjectConfigs] = useState<Record<string, { topic: string; numQuestions: number }>>({});
-  
+
   // Exam State
   const [examData, setExamData] = useState<any>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -38,15 +49,68 @@ export default function CustomExamPage() {
       });
   }, []);
 
-  // Timer Logic
+  // ✅ submitExam is now DEFINED BEFORE the timer effect that uses it
+  const submitExam = useCallback(async (auto = false) => {
+    if (!examData) return;
+
+    if (!auto) {
+      const confirmed = window.confirm("⚠️ Are you sure you want to submit your custom exam? You cannot change your answers after this.");
+      if (!confirmed) return;
+    } else {
+      alert("⏰ Time is up! Your exam is being submitted automatically.");
+    }
+
+    let overallScore = 0;
+    const subjectScores: Record<string, { score: number; total: number }> = {};
+
+    examData.questions.forEach((q: any) => {
+      const subjectName = q.customSubjectName || 'Unknown';
+      if (!subjectScores[subjectName]) {
+        subjectScores[subjectName] = { score: 0, total: 0 };
+      }
+      subjectScores[subjectName].total += 1;
+
+      const selectedOption = q.options.find((o: any) => o.label === userAnswers[q.id]);
+      if (selectedOption?.isCorrect) {
+        overallScore++;
+        subjectScores[subjectName].score += 1;
+      }
+    });
+
+    setScore(overallScore);
+
+    // Save ONE result row per subject (this fixes the Admin Subject breakdown!)
+    try {
+      const savePromises = Object.entries(subjectScores).map(([subjectName, d]) =>
+        fetch('/api/results', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            examBody: examData.examBodyName,
+            subject: subjectName,
+            topic: 'Custom Mock',
+            score: d.score,
+            totalQuestions: d.total,
+          }),
+        })
+      );
+      await Promise.all(savePromises);
+    } catch (error) {
+      console.error('Failed to save custom exam results', error);
+    }
+
+    setStep('results');
+  }, [examData, userAnswers]);
+
+  // Timer Logic (now safe: submitExam already exists)
   useEffect(() => {
     if (step === 'exam' && timeLeft > 0) {
       const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
       return () => clearInterval(timer);
     } else if (step === 'exam' && timeLeft === 0 && examData) {
-      submitExam();
+      submitExam(true);
     }
-  }, [step, timeLeft]);
+  }, [step, timeLeft, examData, submitExam]);
 
   const toggleSubject = (subName: string) => {
     if (selectedSubjects.includes(subName)) {
@@ -70,43 +134,24 @@ export default function CustomExamPage() {
     const subjectsConfig = selectedSubjects.map(sub => ({
       subjectName: sub,
       topicName: subjectConfigs[sub].topic,
-      numQuestions: subjectConfigs[sub].numQuestions
+      numQuestions: subjectConfigs[sub].numQuestions,
     }));
     const res = await fetch('/api/custom-exam', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ examBodyName: examBody, subjectsConfig, totalTime })
+      body: JSON.stringify({ examBodyName: examBody, subjectsConfig, totalTime }),
     });
     const data = await res.json();
     if (data.success && data.questions.length > 0) {
       setExamData(data);
       setTimeLeft(data.totalTime * 60);
       setCurrentIndex(0);
+      setUserAnswers({});
+      setFlagged({});
       setStep('exam');
     } else {
       alert('No questions found for your selection. Try fewer questions or different topics.');
     }
-  };
-
-  const submitExam = () => {
-    let calculatedScore = 0;
-    examData.questions.forEach((q: any) => {
-      const selectedOption = q.options.find((o: any) => o.label === userAnswers[q.id]);
-      if (selectedOption?.isCorrect) calculatedScore++;
-    });
-    setScore(calculatedScore);
-    fetch('/api/results', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        examBody: examData.examBodyName,
-        subject: 'Custom Mock',
-        topic: 'Multiple Subjects',
-        score: calculatedScore,
-        totalQuestions: examData.questions.length
-      })
-    });
-    setStep('results');
   };
 
   const formatTime = (seconds: number) => {
@@ -185,11 +230,10 @@ export default function CustomExamPage() {
     );
   }
 
-  // --- RENDER: EXAM RUNNER (with Navigator) ---
+  // --- RENDER: EXAM RUNNER ---
   if (step === 'exam' && examData && currentQuestion) {
     return (
       <div className="min-h-screen bg-virtue-cream flex flex-col">
-        {/* Top Bar: Title + Timer */}
         <div className="bg-white border-b border-virtue-orange/20 px-6 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
           <h2 className="font-bold text-virtue-brown text-lg">
             {examData.examBodyName} Custom Mock ({selectedSubjects.length} Subjects)
@@ -200,7 +244,6 @@ export default function CustomExamPage() {
         </div>
 
         <main className="flex-1 max-w-6xl mx-auto w-full py-8 px-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Question Card */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-virtue-orange/10 min-h-[400px]">
               <div className="flex justify-between items-center mb-4">
@@ -213,14 +256,13 @@ export default function CustomExamPage() {
                 </button>
               </div>
 
-              {/* Subject Badge (custom exams mix subjects) */}
               <div className="mb-4">
                 <span className="inline-block bg-virtue-brown text-virtue-cream text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
                   {currentQuestion.customSubjectName}
                 </span>
               </div>
 
-              <div className="text-virtue-brown text-lg mb-6 whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: currentQuestion.content }} />
+              <div className="text-virtue-brown text-lg mb-6 whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: parseContent(currentQuestion.content) }} />
 
               <div className="space-y-3">
                 {currentQuestion.options.map((opt: any) => (
@@ -247,7 +289,6 @@ export default function CustomExamPage() {
               </div>
             </div>
 
-            {/* Prev / Next */}
             <div className="flex justify-between">
               <button
                 onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
@@ -266,7 +307,6 @@ export default function CustomExamPage() {
             </div>
           </div>
 
-          {/* Question Navigator Sidebar */}
           <div className="lg:col-span-1">
             <div className="bg-white p-5 rounded-xl shadow-sm border border-virtue-orange/10 sticky top-24">
               <h3 className="font-bold text-virtue-brown mb-4 text-center">Question Navigator</h3>
@@ -287,7 +327,7 @@ export default function CustomExamPage() {
                   );
                 })}
               </div>
-              <button onClick={submitExam} className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors mb-5">
+              <button onClick={() => submitExam(false)} className="w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors mb-5">
                 Submit Exam
               </button>
               <div className="space-y-2 text-xs text-gray-600">
@@ -303,21 +343,124 @@ export default function CustomExamPage() {
   }
 
   // --- RENDER: RESULTS ---
-  if (step === 'results') {
+  if (step === 'results' && examData) {
     const percentage = Math.round((score / examData.questions.length) * 100);
+
+    const subjectBreakdown: Record<string, { score: number; total: number }> = {};
+    examData.questions.forEach((q: any) => {
+      const subjectName = q.customSubjectName || 'Unknown';
+      if (!subjectBreakdown[subjectName]) subjectBreakdown[subjectName] = { score: 0, total: 0 };
+      subjectBreakdown[subjectName].total += 1;
+      const selectedOption = q.options.find((o: any) => o.label === userAnswers[q.id]);
+      if (selectedOption?.isCorrect) subjectBreakdown[subjectName].score += 1;
+    });
+
     return (
-      <div className="min-h-screen bg-virtue-cream flex items-center justify-center px-4">
-        <div className="bg-white p-10 rounded-2xl shadow-xl border border-virtue-orange/20 text-center max-w-md w-full">
-          <div className="text-6xl mb-4">🎉</div>
-          <h1 className="text-3xl font-bold text-virtue-brown mb-2">Exam Completed!</h1>
-          <div className="bg-virtue-cream p-6 rounded-xl mb-6">
-            <p className="text-sm text-gray-500 uppercase font-bold">Your Score</p>
-            <p className="text-5xl font-bold text-virtue-orange mt-2">{score} / {examData.questions.length}</p>
-            <p className="text-xl font-semibold text-virtue-brown mt-2">{percentage}%</p>
+      <div className="min-h-screen bg-virtue-cream flex flex-col">
+        <Header />
+        <div className="flex-1 py-10 px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8 mb-8 text-center border-t-8 border-virtue-orange">
+              <h1 className="text-3xl font-bold text-virtue-brown mb-2">Custom Exam Completed!</h1>
+              <p className="text-virtue-brown/70 mb-6">Here is how you performed on your {examData.examBodyName} Custom Mock Exam.</p>
+
+              <div className="flex justify-center gap-8 mb-6">
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-virtue-brown">{score}/{examData.questions.length}</div>
+                  <div className="text-sm text-gray-500 uppercase tracking-wide">Total Score</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-4xl font-bold ${percentage >= 50 ? 'text-green-600' : 'text-red-600'}`}>{percentage}%</div>
+                  <div className="text-sm text-gray-500 uppercase tracking-wide">Percentage</div>
+                </div>
+              </div>
+
+              <div className="bg-virtue-cream p-4 rounded-lg mb-6 text-left">
+                <h3 className="font-bold text-virtue-brown mb-3">📊 Score by Subject:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {Object.entries(subjectBreakdown).map(([subject, d]) => {
+                    const subPercent = Math.round((d.score / d.total) * 100);
+                    return (
+                      <div key={subject} className="flex justify-between items-center bg-white p-3 rounded border border-virtue-orange/20">
+                        <span className="font-semibold text-virtue-brown">{subject}</span>
+                        <span className={`font-bold ${subPercent >= 50 ? 'text-green-600' : 'text-red-600'}`}>
+                          {d.score}/{d.total} ({subPercent}%)
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={() => router.push('/')}
+                className="px-6 py-3 bg-virtue-brown text-virtue-cream rounded-lg font-semibold hover:bg-virtue-brown-light transition-colors"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+
+            <h2 className="text-xl font-bold text-virtue-brown mb-4">Question Breakdown & Corrections</h2>
+            <div className="space-y-6">
+              {examData.questions.map((q: any, index: number) => {
+                const selectedOptionLabel = userAnswers[q.id];
+                const correctOption = q.options.find((o: any) => o.isCorrect);
+                const isCorrect = selectedOptionLabel === correctOption?.label;
+
+                return (
+                  <div key={q.id} className={`bg-white rounded-xl shadow-sm p-6 border-l-4 ${isCorrect ? 'border-green-500' : 'border-red-500'}`}>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-bold text-virtue-brown">Question {index + 1}</h3>
+                        <span className="inline-block bg-virtue-brown text-virtue-cream text-xs font-bold px-2 py-0.5 rounded mt-1">
+                          {q.customSubjectName}
+                        </span>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {isCorrect ? 'CORRECT' : 'INCORRECT'}
+                      </span>
+                    </div>
+
+                    <div className="text-virtue-brown mb-4 text-lg" dangerouslySetInnerHTML={{ __html: parseContent(q.content) }} />
+
+                    <div className="space-y-2 mb-4">
+                      {q.options.map((opt: any) => {
+                        const isSelected = selectedOptionLabel === opt.label;
+                        const isTheCorrectOne = opt.isCorrect;
+
+                        let bgClass = "bg-virtue-cream border-virtue-orange/20";
+                        if (isSelected && !isTheCorrectOne) bgClass = "bg-red-50 border-red-300";
+                        if (isTheCorrectOne) bgClass = "bg-green-50 border-green-300";
+
+                        return (
+                          <div key={opt.id} className={`p-3 rounded-lg border flex items-center gap-3 ${bgClass}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+                              ${isTheCorrectOne ? 'bg-green-500 text-white' : isSelected ? 'bg-red-500 text-white' : 'bg-virtue-cream-dark text-virtue-brown'}`}>
+                              {opt.label}
+                            </div>
+                            <div className="text-virtue-brown">
+                              {opt.optionType === 'IMAGE' && opt.imageUrl ? (
+                                <img src={opt.imageUrl} alt="Option" className="h-24 w-auto rounded border" />
+                              ) : (
+                                <span>{opt.textContent}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {q.explanation && (
+                      <div className="bg-virtue-cream-dark p-4 rounded-lg border border-virtue-orange/20 mt-4">
+                        <p className="text-sm font-bold text-virtue-brown mb-1">💡 Explanation:</p>
+                        <p className="text-virtue-brown/80 text-sm" dangerouslySetInnerHTML={{ __html: parseContent(q.explanation) }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <button onClick={() => router.push('/')} className="w-full bg-virtue-brown text-virtue-cream py-3 rounded-lg font-bold hover:bg-virtue-brown-light transition-colors">
-            Return to Dashboard
-          </button>
         </div>
       </div>
     );
